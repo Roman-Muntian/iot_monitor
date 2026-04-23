@@ -2,7 +2,8 @@ import 'dart:io';
 import 'package:csv/csv.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+// ДОДАНО: імпорт debugPrint
+import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
 
 class ExportService {
   /// Експортує переданий список логів у CSV файл та відкриває меню "Поділитися"
@@ -10,7 +11,8 @@ class ExportService {
     // 1. Перевірка платформи (на Web файлова система працює інакше, 
     // тому для початку реалізуємо логіку тільки для мобільних пристроїв)
     if (kIsWeb) {
-      print("Експорт у файл на Web потребує іншого підходу (завантаження файлу).");
+      // ВИПРАВЛЕНО: Використовуємо debugPrint замість print
+      debugPrint("Експорт у файл на Web потребує іншого підходу (завантаження файлу).");
       return;
     }
 
@@ -54,7 +56,8 @@ class ExportService {
         text: 'Аналітична звітність: телеметрія IoT',
       );
     } catch (e) {
-      print("Помилка під час експорту: $e");
+      // ВИПРАВЛЕНО: Використовуємо debugPrint замість print
+      debugPrint("Помилка під час експорту: $e");
     }
   }
 }
