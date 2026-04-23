@@ -39,22 +39,31 @@ class DbService {
     );
   }
 
-  Future<void> insertLog(String type, double value) async {
+Future<void> insertLog(String type, double value) async {
+    // Отримуємо поточний час
+    final now = DateTime.now();
+    
+    // Створюємо новий об'єкт часу, примусово встановлюючи секунди і мілісекунди в 0
+    final cleanTime = DateTime(now.year, now.month, now.day, now.hour, now.minute);
+    
+    // Результат буде у форматі: 2024-05-20T14:30:00
+    final cleanTimestamp = cleanTime.toIso8601String().split('.').first;
+
     // ЛОГІКА ДЛЯ БРАУЗЕРА
     if (kIsWeb) {
       _webMemoryDb.insert(0, {
-        'timestamp': DateTime.now().toIso8601String(),
+        'timestamp': cleanTimestamp,
         'type': type,
         'value': value
       });
-      if (_webMemoryDb.length > 1000) _webMemoryDb.removeLast(); // Ліміт 1000 записів
+      if (_webMemoryDb.length > 1000) _webMemoryDb.removeLast(); 
       return;
     }
 
     // ЛОГІКА ДЛЯ ANDROID / iOS
     final database = await db;
     await database.insert('logs', {
-      'timestamp': DateTime.now().toIso8601String(),
+      'timestamp': cleanTimestamp,
       'type': type,
       'value': value
     });

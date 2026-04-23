@@ -123,12 +123,24 @@ class _LogScreenState extends State<LogScreen> {
   }
 
   Widget _buildLogTile(Map<String, dynamic> log) {
-    final date = DateTime.parse(log['timestamp']);
-    final isTemp = log['type'] == 'temp';
+    String typeLabel = log['type'] == 'temp' ? 'Темп.' : 'Вол.';
+    String unit = log['type'] == 'temp' ? '°C' : '%';
+    DateTime timestamp = DateTime.parse(log['timestamp']);
+    
+    // ВИПРАВЛЕНО: Залишаємо тільки години та хвилини ('HH:mm')
+    String timeString = DateFormat('HH:mm').format(timestamp);
+
     return ListTile(
-      leading: Icon(isTemp ? LucideIcons.thermometer : LucideIcons.droplets, color: isTemp ? Colors.orange : Colors.blue),
-      title: Text(DateFormat('HH:mm:ss').format(date)),
-      trailing: Text("${log['value']} ${isTemp ? '°C' : '%'}", style: const TextStyle(fontWeight: FontWeight.bold)),
+      leading: Icon(
+        log['type'] == 'temp' ? LucideIcons.thermometer : LucideIcons.droplets, 
+        color: log['type'] == 'temp' ? Colors.orange : Colors.blue
+      ),
+      // Додано fontWeight: FontWeight.bold для кращого візуального акценту
+      title: Text(
+        "$typeLabel ${log['value']} $unit", 
+        style: const TextStyle(fontWeight: FontWeight.bold)
+      ),
+      subtitle: Text(timeString),
     );
   }
-}
+} // <--- ВАЖЛИВО: ця дужка має бути в самому кінці файлу

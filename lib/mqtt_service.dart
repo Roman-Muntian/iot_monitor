@@ -26,7 +26,7 @@ class MqttService {
   DateTime? _lastTempAlert;
   DateTime? _lastHumAlert;
 
-  // --- Змінні для фільтрації запису в БД (5 секунд) ---
+  // --- Змінні для фільтрації запису в БД (1 хвилина) ---
   DateTime? _lastTempDbSave;
   DateTime? _lastHumDbSave;
 
@@ -62,34 +62,30 @@ class MqttService {
     }
   }
 
-void _processData(String topic, String payload) {
+  // ВІДНОВЛЕНИЙ ПОЧАТОК ФУНКЦІЇ:
+  void _processData(String topic, String payload) {
     double? val = double.tryParse(payload);
     if (val == null) return;
 
     String type = topic.contains('temp') ? 'temp' : 'hum';
     DateTime now = DateTime.now();
-    
+
     // 1. РОЗДІЛЕННЯ: Оновлення UI в реальному часі (Миттєво)
     if (type == 'temp') {
       _tempStream.add(payload); // Відправляємо на головний екран
       
-      // Запис у БД ТІЛЬКИ на кратних 5 секундах (0, 5, 10, 15...)
-      if (now.second % 5 == 0) {
-        // Захист: щоб не записати кілька разів протягом однієї й тієї ж секунди
-        if (_lastTempDbSave == null || _lastTempDbSave!.second != now.second) {
-          _dbService.insertLog(type, val);
-          _lastTempDbSave = now;
-        }
+      // ЗБЕРЕЖЕННЯ: Перевіряємо, чи змінилася поточна хвилина порівняно з останнім записом
+      if (_lastTempDbSave == null || _lastTempDbSave!.minute != now.minute) {
+        _dbService.insertLog(type, val);
+        _lastTempDbSave = now; // Запам'ятовуємо час цього запису
       }
     } else {
       _humStream.add(payload); // Відправляємо на головний екран
       
-      // Запис у БД ТІЛЬКИ на кратних 5 секундах (0, 5, 10, 15...)
-      if (now.second % 5 == 0) {
-        if (_lastHumDbSave == null || _lastHumDbSave!.second != now.second) {
-          _dbService.insertLog(type, val);
-          _lastHumDbSave = now;
-        }
+      // ЗБЕРЕЖЕННЯ: Перевіряємо, чи змінилася поточна хвилина порівняно з останнім записом
+      if (_lastHumDbSave == null || _lastHumDbSave!.minute != now.minute) {
+        _dbService.insertLog(type, val);
+        _lastHumDbSave = now; // Запам'ятовуємо час цього запису
       }
     }
 
