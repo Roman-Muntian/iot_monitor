@@ -3,6 +3,9 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'mqtt_service.dart';
 import 'log_screen.dart';
+import 'db_service.dart';
+import 'export_service.dart';
+import 'analytics_screen.dart'; // <-- ДОДАНО ІМПОРТ НОВОГО ЕКРАНА
 
 void main() => runApp(const MyApp());
 
@@ -27,18 +30,25 @@ class Dashboard extends StatefulWidget {
 
 class _DashboardState extends State<Dashboard> {
   final MqttService mqtt = MqttService();
+  final DbService _dbService = DbService();
 
   @override
   void initState() {
     super.initState();
     mqtt.connect();
-    mqtt.alertStream.listen((msg) {
+  }
+
+  Future<void> _exportData() async {
+    final allLogs = await _dbService.getLogs();
+    if (allLogs.isEmpty) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(msg), backgroundColor: Colors.redAccent, behavior: SnackBarBehavior.floating,
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Журнал порожній. Немає даних для завантаження."))
+        );
       }
-    });
+      return;
+    }
+    await ExportService.exportLogsToCSV(allLogs);
   }
 
   @override
@@ -59,33 +69,95 @@ class _DashboardState extends State<Dashboard> {
             title: const Text("Налаштувати ліміти"),
             onTap: () { Navigator.pop(context); _showSettings(); },
           ),
-          // --- ДОДАНИЙ БЛОК ДЛЯ ЖУРНАЛУ ДАНИХ ---
           ListTile(
             leading: const Icon(LucideIcons.history),
             title: const Text("Журнал даних"),
             onTap: () {
-              Navigator.pop(context); // Закриваємо бічне меню перед переходом
-              Navigator.push(
-                context, 
-                MaterialPageRoute(builder: (context) => const LogScreen())
-              );
+              Navigator.pop(context);
+              Navigator.push(context, MaterialPageRoute(builder: (context) => const LogScreen()));
             },
           ),
-          // --------------------------------------
+          ListTile(
+            leading: const Icon(LucideIcons.downloadCloud, color: Colors.indigo),
+            title: const Text("Завантажити звіт (CSV)"),
+            onTap: () {
+              Navigator.pop(context);
+              _exportData();
+            },
+          ), // <-- ВИПРАВЛЕНО ЗАКРИТТЯ ДУЖКИ
+          ListTile(
+            leading: const Icon(LucideIcons.lineChart),
+            title: const Text("Графіки аналітики"),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(context, MaterialPageRoute(builder: (context) => AnalyticsScreen()));
+            },
+          ),
         ]),
       ),
-      // --- ВІДНОВЛЕНИЙ БЛОК BODY ---
-      body: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-          _buildCard("TEMPERATURE", mqtt.tempStream, "°C", Colors.orange, LucideIcons.thermometer, mqtt.settings.tempMin, mqtt.settings.tempMax),
-          const SizedBox(height: 20),
-          _buildCard("HUMIDITY", mqtt.humStream, "%", Colors.blue, LucideIcons.droplets, mqtt.settings.humMin, mqtt.settings.humMax),
-        ]),
+      body: Stack(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+              _buildCard("TEMPERATURE", mqtt.tempStream, "°C", Colors.orange, LucideIcons.thermometer, mqtt.settings.tempMin, mqtt.settings.tempMax),
+              const SizedBox(height: 20),
+              _buildCard("HUMIDITY", mqtt.humStream, "%", Colors.blue, LucideIcons.droplets, mqtt.settings.humMin, mqtt.settings.humMax),
+            ]),
+          ),
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildAlarmBanner('temp', mqtt.tempStream),
+                  _buildAlarmBanner('hum', mqtt.humStream),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
-      // -----------------------------
-    ); // Відновлено закриваючу дужку Scaffold
-  } // Відновлено закриваючу дужку методу build
+    );
+  }
+
+  Widget _buildAlarmBanner(String type, Stream<String> stream) {
+    return StreamBuilder<String>(
+      stream: stream,
+      builder: (context, snap) {
+        if (!snap.hasData) return const SizedBox.shrink(); 
+        
+        double val = double.tryParse(snap.data!) ?? 0;
+        String? msg = mqtt.settings.checkAlarm(val, type);
+        
+        if (msg == null) return const SizedBox.shrink(); 
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 10, left: 20, right: 20),
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+          decoration: BoxDecoration(
+            color: Colors.redAccent,
+            borderRadius: BorderRadius.circular(15),
+            boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 4))],
+          ),
+          child: Row(
+            children: [
+              const Icon(LucideIcons.alertTriangle, color: Colors.white, size: 28),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  msg, 
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
 
   Widget _buildCard(String title, Stream<String> stream, String unit, Color color, IconData icon, double min, double max) {
     return StreamBuilder<String>(
@@ -119,11 +191,11 @@ class _DashboardState extends State<Dashboard> {
           padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 20, right: 20, top: 20),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             Text("ЛІМІТИ", style: GoogleFonts.orbitron(fontSize: 18)),
-            _slider("Temp Min", mqtt.settings.tempMin, 10, 25, (v) => setST(() => mqtt.settings.update(v, mqtt.settings.tempMax, mqtt.settings.humMin, mqtt.settings.humMax))),
-            _slider("Temp Max", mqtt.settings.tempMax, 26, 50, (v) => setST(() => mqtt.settings.update(mqtt.settings.tempMin, v, mqtt.settings.humMin, mqtt.settings.humMax))),
+            _slider("Temp Min", mqtt.settings.tempMin, 0, 100, (v) => setST(() => mqtt.settings.tempMin = v)),
+            _slider("Temp Max", mqtt.settings.tempMax, 0, 100, (v) => setST(() => mqtt.settings.tempMax = v)),
             const Divider(),
-            _slider("Hum Min", mqtt.settings.humMin, 0, 45, (v) => setST(() => mqtt.settings.update(mqtt.settings.tempMin, mqtt.settings.tempMax, v, mqtt.settings.humMax))),
-            _slider("Hum Max", mqtt.settings.humMax, 46, 100, (v) => setST(() => mqtt.settings.update(mqtt.settings.tempMin, mqtt.settings.tempMax, mqtt.settings.humMin, v))),
+            _slider("Hum Min", mqtt.settings.humMin, 0, 100, (v) => setST(() => mqtt.settings.humMin = v)),
+            _slider("Hum Max", mqtt.settings.humMax, 0, 100, (v) => setST(() => mqtt.settings.humMax = v)),
             const SizedBox(height: 20),
           ]),
         );
@@ -131,7 +203,21 @@ class _DashboardState extends State<Dashboard> {
     );
   }
 
-  Widget _slider(String label, double val, double min, double max, Function(double) fn) {
-    return Column(children: [Text("$label: ${val.round()}"), Slider(value: val.clamp(min, max), min: min, max: max, onChanged: (v) { fn(v); setState(() {}); })]);
+  Widget _slider(String label, double val, double min, double max, Function(double) onValueChanged) {
+    return Column(children: [
+      Text("$label: ${val.round()}"),
+      Slider(
+        value: val.clamp(min, max),
+        min: min,
+        max: max,
+        onChanged: (v) {
+          onValueChanged(v);
+          setState(() {});
+        },
+        onChangeEnd: (v) {
+          mqtt.settings.update(mqtt.settings.tempMin, mqtt.settings.tempMax, mqtt.settings.humMin, mqtt.settings.humMax);
+        },
+      )
+    ]);
   }
 }

@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'package:mqtt_client/mqtt_client.dart';
-import 'package:mqtt_client/mqtt_server_client.dart';
-import 'package:mqtt_client/mqtt_browser_client.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'settings_service.dart';
 import 'notification_service.dart';
 import 'db_service.dart';
+
+// Умовні імпорти для кросплатформності (щоб працювало і на Web, і на Android)
+import 'mqtt_setup.dart'
+    if (dart.library.io) 'mqtt_setup_io.dart'
+    if (dart.library.html) 'mqtt_setup_web.dart';
 
 enum MqttConnectionState { connected, disconnected, connecting, error }
 
@@ -16,14 +18,20 @@ class MqttService {
 
   final _tempStream = StreamController<String>.broadcast();
   final _humStream = StreamController<String>.broadcast();
-  final _alertStream = StreamController<String>.broadcast();
   final _stateStream = StreamController<MqttConnectionState>.broadcast();
 
   final _dbService = DbService();
 
+  // --- Змінні для таймера тиші тривог (5 хвилин) ---
+  DateTime? _lastTempAlert;
+  DateTime? _lastHumAlert;
+
+  // --- Змінні для фільтрації запису в БД (5 секунд) ---
+  DateTime? _lastTempDbSave;
+  DateTime? _lastHumDbSave;
+
   Stream<String> get tempStream => _tempStream.stream;
   Stream<String> get humStream => _humStream.stream;
-  Stream<String> get alertStream => _alertStream.stream;
   Stream<MqttConnectionState> get stateStream => _stateStream.stream;
 
   Future<void> connect() async {
@@ -32,12 +40,9 @@ class MqttService {
     await _notifications.init();
 
     final String clientId = 'roman_iot_${DateTime.now().millisecondsSinceEpoch}';
-    if (kIsWeb) {
-      client = MqttBrowserClient('ws://broker.emqx.io/mqtt', clientId)..port = 8083;
-    } else {
-      client = MqttServerClient('broker.emqx.io', clientId)..port = 1883;
-    }
-
+    
+    // Використовуємо функцію з умовних імпортів
+    client = setupMqttClient(clientId);
     client.keepAlivePeriod = 20;
     client.autoReconnect = true;
 
@@ -57,32 +62,62 @@ class MqttService {
     }
   }
 
-  void _processData(String topic, String payload) {
+void _processData(String topic, String payload) {
     double? val = double.tryParse(payload);
     if (val == null) return;
 
     String type = topic.contains('temp') ? 'temp' : 'hum';
+    DateTime now = DateTime.now();
     
+    // 1. РОЗДІЛЕННЯ: Оновлення UI в реальному часі (Миттєво)
     if (type == 'temp') {
-      _tempStream.add(payload);
+      _tempStream.add(payload); // Відправляємо на головний екран
+      
+      // Запис у БД ТІЛЬКИ на кратних 5 секундах (0, 5, 10, 15...)
+      if (now.second % 5 == 0) {
+        // Захист: щоб не записати кілька разів протягом однієї й тієї ж секунди
+        if (_lastTempDbSave == null || _lastTempDbSave!.second != now.second) {
+          _dbService.insertLog(type, val);
+          _lastTempDbSave = now;
+        }
+      }
     } else {
-      _humStream.add(payload);
+      _humStream.add(payload); // Відправляємо на головний екран
+      
+      // Запис у БД ТІЛЬКИ на кратних 5 секундах (0, 5, 10, 15...)
+      if (now.second % 5 == 0) {
+        if (_lastHumDbSave == null || _lastHumDbSave!.second != now.second) {
+          _dbService.insertLog(type, val);
+          _lastHumDbSave = now;
+        }
+      }
     }
 
-    // Зберігаємо дані в локальну БД
-    _dbService.insertLog(type, val);
+    // 2. ЛОГІКА ТРИВОГ (Push-сповіщення з інтервалом 5 хв)
+    String? alarmMsg = settings.checkAlarm(val, type);
 
-    String? alarm = settings.checkAlarm(val, type);
-    if (alarm != null) {
-      _alertStream.add(alarm);
-      _notifications.show("УВАГА: IoT ТРИВОГА", alarm);
+    if (alarmMsg != null) {
+      if (type == 'temp') {
+        if (_lastTempAlert == null || now.difference(_lastTempAlert!).inMinutes >= 5) {
+          _notifications.show("УВАГА: ТЕМПЕРАТУРА", alarmMsg);
+          _lastTempAlert = now;
+        }
+      } else if (type == 'hum') {
+        if (_lastHumAlert == null || now.difference(_lastHumAlert!).inMinutes >= 5) {
+          _notifications.show("УВАГА: ВОЛОГІСТЬ", alarmMsg);
+          _lastHumAlert = now;
+        }
+      }
+    } else {
+      // Скидаємо таймер тривоги, якщо все повернулося в норму
+      if (type == 'temp') _lastTempAlert = null;
+      if (type == 'hum') _lastHumAlert = null;
     }
   }
 
   void dispose() {
     _tempStream.close(); 
     _humStream.close(); 
-    _alertStream.close(); 
     _stateStream.close();
     client.disconnect();
   }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:intl/intl.dart';
+import 'package:fl_chart/fl_chart.dart'; // Новий імпорт
 import 'db_service.dart';
 
 class LogScreen extends StatefulWidget {
@@ -13,12 +14,8 @@ class LogScreen extends StatefulWidget {
 
 class _LogScreenState extends State<LogScreen> {
   final DbService _dbService = DbService();
-  String _selectedType = 'Всі';
+  String _selectedType = 'Температура'; // За замовчуванням
   DateTime? _selectedDate;
-
-  void _loadData() {
-    setState(() {}); 
-  }
 
   Future<void> _pickDate() async {
     DateTime? picked = await showDatePicker(
@@ -27,40 +24,7 @@ class _LogScreenState extends State<LogScreen> {
       firstDate: DateTime(2020),
       lastDate: DateTime.now(),
     );
-    if (picked != null) {
-      setState(() => _selectedDate = picked);
-    }
-  }
-
-  void _clearDate() {
-    setState(() => _selectedDate = null);
-  }
-
-  Future<void> _confirmClearLogs() async {
-    bool? confirm = await showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text("Очищення журналу"),
-        content: const Text("Ви впевнені, що хочете видалити всі записи? Цю дію неможливо скасувати."),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Скасувати")),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true), 
-            child: const Text("Видалити", style: TextStyle(color: Colors.red))
-          ),
-        ],
-      )
-    );
-
-    if (confirm == true) {
-      await _dbService.clearLogs();
-      _loadData();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Журнал успішно очищено"))
-        );
-      }
-    }
+    if (picked != null) setState(() => _selectedDate = picked);
   }
 
   @override
@@ -70,92 +34,101 @@ class _LogScreenState extends State<LogScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF1F5F9),
       appBar: AppBar(
-        title: Text("ЖУРНАЛ ДАНИХ", style: GoogleFonts.orbitron(fontWeight: FontWeight.bold, fontSize: 18)),
-        actions: [
-          IconButton(
-            icon: const Icon(LucideIcons.trash2, color: Colors.redAccent),
-            onPressed: _confirmClearLogs,
-            tooltip: "Очистити журнал",
-          )
-        ],
+        title: Text("АНАЛІТИКА", style: GoogleFonts.orbitron(fontWeight: FontWeight.bold, fontSize: 18)),
       ),
-      body: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            color: Colors.white,
-            child: Row(
-              children: [
-                Expanded(
-                  child: DropdownButton<String>(
-                    value: _selectedType,
-                    isExpanded: true,
-                    underline: const SizedBox(),
-                    items: ['Всі', 'Температура', 'Вологість'].map((String value) {
-                      return DropdownMenuItem<String>(value: value, child: Text(value));
-                    }).toList(),
-                    onChanged: (val) => setState(() => _selectedType = val!),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                // ВИПРАВЛЕНО ТУТ: Замінено ActionChip на InputChip
-                InputChip(
-                  label: Text(_selectedDate == null ? "Обрати дату" : DateFormat('dd.MM.yyyy').format(_selectedDate!)),
-                  avatar: const Icon(LucideIcons.calendar, size: 16),
-                  onSelected: (bool selected) => _pickDate(),
-                  onDeleted: _selectedDate != null ? _clearDate : null,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 10),
-          Expanded(
-            child: FutureBuilder<List<Map<String, dynamic>>>(
-              future: _dbService.getLogs(type: _selectedType, date: dateString),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                  return const Center(child: Text("Немає записів за вказаними фільтрами", style: TextStyle(color: Colors.grey)));
-                }
-
-                final logs = snapshot.data!;
-                return ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  itemCount: logs.length,
-                  itemBuilder: (context, index) {
-                    final log = logs[index];
-                    final isTemp = log['type'] == 'temp';
-                    final date = DateTime.parse(log['timestamp']);
-                    
-                    return Card(
-                      elevation: 0,
-                      margin: const EdgeInsets.only(bottom: 8),
-                      child: ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: isTemp ? Colors.orange.withOpacity(0.2) : Colors.blue.withOpacity(0.2),
-                          child: Icon(isTemp ? LucideIcons.thermometer : LucideIcons.droplets, 
-                                     color: isTemp ? Colors.orange : Colors.blue),
-                        ),
-                        title: Text(
-                          isTemp ? "Температура" : "Вологість",
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        subtitle: Text(DateFormat('dd.MM.yyyy HH:mm:ss').format(date)),
-                        trailing: Text(
-                          "${log['value']} ${isTemp ? '°C' : '%'}",
-                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                        ),
+      body: FutureBuilder<List<Map<String, dynamic>>>(
+        future: _dbService.getLogs(type: _selectedType, date: dateString),
+        builder: (context, snapshot) {
+          final logs = snapshot.data ?? [];
+          
+          return Column(
+            children: [
+              // Панель фільтрів
+              Container(
+                padding: const EdgeInsets.all(16),
+                color: Colors.white,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: SegmentedButton<String>(
+                        segments: const [
+                          ButtonSegment(value: 'Температура', label: Text('Темп.'), icon: Icon(LucideIcons.thermometer, size: 16)),
+                          ButtonSegment(value: 'Вологість', label: Text('Вол.'), icon: Icon(LucideIcons.droplets, size: 16)),
+                        ],
+                        selected: {_selectedType},
+                        onSelectionChanged: (val) => setState(() => _selectedType = val.first),
                       ),
-                    );
-                  },
-                );
-              },
-            ),
-          ),
-        ],
+                    ),
+                    const SizedBox(width: 10),
+                    IconButton(
+                      icon: Icon(LucideIcons.calendar, color: _selectedDate != null ? Colors.indigo : Colors.grey),
+                      onPressed: _pickDate,
+                    ),
+                  ],
+                ),
+              ),
+
+              // ГРАФІК
+              if (logs.isNotEmpty)
+                Container(
+                  height: 250,
+                  padding: const EdgeInsets.only(right: 25, left: 10, top: 20, bottom: 10),
+                  child: LineChart(_buildChartData(logs)),
+                ),
+
+              const SizedBox(height: 10),
+              
+              // СПИСОК
+              Expanded(
+                child: logs.isEmpty 
+                  ? const Center(child: Text("Немає даних"))
+                  : ListView.builder(
+                      itemCount: logs.length,
+                      itemBuilder: (context, i) => _buildLogTile(logs[i]),
+                    ),
+              ),
+            ],
+          );
+        },
       ),
+    );
+  }
+
+  LineChartData _buildChartData(List<Map<String, dynamic>> logs) {
+    // Реверсуємо, щоб старі записи були зліва, нові - справа
+    final reversedLogs = logs.reversed.toList();
+    final isTemp = _selectedType == 'Температура';
+    
+    return LineChartData(
+      gridData: const FlGridData(show: true, drawVerticalLine: false),
+      titlesData: const FlTitlesData(show: false), // Ховаємо цифри по осях для чистоти
+      borderData: FlBorderData(show: false),
+      lineBarsData: [
+        LineChartBarData(
+          spots: reversedLogs.asMap().entries.map((e) {
+            return FlSpot(e.key.toDouble(), e.value['value'].toDouble());
+          }).toList(),
+          isCurved: true,
+          color: isTemp ? Colors.orange : Colors.blue,
+          barWidth: 3,
+          isStrokeCapRound: true,
+          dotData: const FlDotData(show: false),
+          belowBarData: BarAreaData(
+            show: true, 
+            color: (isTemp ? Colors.orange : Colors.blue).withOpacity(0.1)
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLogTile(Map<String, dynamic> log) {
+    final date = DateTime.parse(log['timestamp']);
+    final isTemp = log['type'] == 'temp';
+    return ListTile(
+      leading: Icon(isTemp ? LucideIcons.thermometer : LucideIcons.droplets, color: isTemp ? Colors.orange : Colors.blue),
+      title: Text(DateFormat('HH:mm:ss').format(date)),
+      trailing: Text("${log['value']} ${isTemp ? '°C' : '%'}", style: const TextStyle(fontWeight: FontWeight.bold)),
     );
   }
 }
