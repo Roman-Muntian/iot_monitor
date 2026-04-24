@@ -86,21 +86,27 @@ class _DashboardState extends State<Dashboard> {
       drawer: _buildDrawer(),
       body: Stack(
         children: [
-          SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: Column(children: [
-              _buildInteractiveCard(
-                "TEMPERATURE", mqtt.tempStream, "°C", Colors.orange, 
-                LucideIcons.thermometer, mqtt.settings.tempMin, mqtt.settings.tempMax
+          // Центруємо вміст екрана
+          Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min, // Стискаємо колонку до розміру карток
+                children: [
+                  _buildInteractiveCard(
+                    "TEMPERATURE", mqtt.tempStream, "°C", Colors.orange, 
+                    LucideIcons.thermometer, mqtt.settings.tempMin, mqtt.settings.tempMax
+                  ),
+                  const SizedBox(height: 20),
+                  _buildInteractiveCard(
+                    "HUMIDITY", mqtt.humStream, "%", Colors.blue, 
+                    LucideIcons.droplets, mqtt.settings.humMin, mqtt.settings.humMax
+                  ),
+                  const SizedBox(height: 20),
+                  Text("Останнє оновлення: $_lastUpdate", style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                ],
               ),
-              const SizedBox(height: 20),
-              _buildInteractiveCard(
-                "HUMIDITY", mqtt.humStream, "%", Colors.blue, 
-                LucideIcons.droplets, mqtt.settings.humMin, mqtt.settings.humMax
-              ),
-              const SizedBox(height: 20),
-              Text("Останнє оновлення: $_lastUpdate", style: const TextStyle(color: Colors.grey, fontSize: 12)),
-            ]),
+            ),
           ),
           _buildAlarmOverlay(),
         ],
@@ -139,11 +145,12 @@ class _DashboardState extends State<Dashboard> {
     );
   }
 
-  // Клікабельна картка з переходом до аналітики
+  // Клікабельна картка з переходом до аналітики (ОНОВЛЕНО З АНІМАЦІЄЮ ЧИСЕЛ)
   Widget _buildInteractiveCard(String title, Stream<String> stream, String unit, Color color, IconData icon, double min, double max) {
     return StreamBuilder<String>(
       stream: stream,
       builder: (context, snap) {
+        // Парсимо значення з MQTT
         double val = double.tryParse(snap.data ?? '0') ?? 0;
         bool alarm = (val < min || val > max) && snap.hasData;
         
@@ -156,7 +163,15 @@ class _DashboardState extends State<Dashboard> {
               color: Colors.white, 
               borderRadius: BorderRadius.circular(20),
               border: alarm ? Border.all(color: Colors.red, width: 2) : null,
-              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10)],
+              boxShadow: [
+                BoxShadow(
+                  color: alarm 
+                    ? Colors.red.withValues(alpha: 0.2) 
+                    : color.withValues(alpha: 0.15),
+                  blurRadius: 15,
+                  offset: const Offset(0, 6),
+                )
+              ],
             ),
             child: Column(
               children: [
@@ -164,7 +179,25 @@ class _DashboardState extends State<Dashboard> {
                   Icon(icon, color: alarm ? Colors.red : color, size: 40),
                   Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
                     Text(title, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                    Text("${snap.data ?? '--'} $unit", style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: alarm ? Colors.red : Colors.black)),
+                    
+                    // --- ПЛАВНА АНІМАЦІЯ ЦИФР ---
+                    TweenAnimationBuilder<double>(
+                      tween: Tween<double>(end: val), // Вказуємо кінцеве значення
+                      duration: const Duration(milliseconds: 800), // Тривалість плавного переходу (0.8 сек)
+                      curve: Curves.easeOutCubic, // Тип анімації: швидко стартує, плавно гальмує
+                      builder: (context, animatedVal, child) {
+                        return Text(
+                          "${snap.hasData ? animatedVal.toStringAsFixed(1) : '--'} $unit", 
+                          style: TextStyle(
+                            fontSize: 32, 
+                            fontWeight: FontWeight.bold, 
+                            color: alarm ? Colors.red : Colors.black
+                          )
+                        );
+                      },
+                    ),
+                    // ----------------------------
+                    
                   ]),
                 ]),
                 const Divider(height: 30),
@@ -185,43 +218,188 @@ class _DashboardState extends State<Dashboard> {
 
   Widget _buildDrawer() {
     return Drawer(
-      child: Column(children: [
-        UserAccountsDrawerHeader(
-          decoration: const BoxDecoration(color: Colors.indigo),
-          accountName: Text("Роман 41-КІ", style: GoogleFonts.orbitron()),
-          accountEmail: const Text("Система активна"),
-          currentAccountPicture: const CircleAvatar(backgroundColor: Colors.white, child: Icon(LucideIcons.cpu)),
+      backgroundColor: const Color(0xFFF8FAFC), // Дуже світлий сіро-синій фон
+      surfaceTintColor: Colors.transparent,
+      child: Column(
+        children: [
+          // Преміальна шапка з абстракцією
+          SizedBox(
+            width: double.infinity,
+            child: Stack(
+              children: [
+                // Основний градієнт
+                Container(
+                  height: 230,
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Color(0xFF0F172A), Color(0xFF3730A3)], // Від темного сланцю до глибокого індиго
+                      begin: Alignment.bottomLeft,
+                      end: Alignment.topRight,
+                    ),
+                  ),
+                ),
+                // Абстрактні кола для техно-стилю
+                Positioned(
+                  right: -50, top: -50,
+                  child: Container(width: 150, height: 150, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withValues(alpha: 0.05))),
+                ),
+                Positioned(
+                  right: 40, bottom: -40,
+                  child: Container(width: 100, height: 100, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withValues(alpha: 0.05))),
+                ),
+                // Вміст шапки
+                Padding(
+                  padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top + 30, bottom: 25, left: 24, right: 24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Аватар з індикатором онлайн
+                      Stack(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.1),
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white.withValues(alpha: 0.2), width: 2),
+                            ),
+                            child: const Icon(LucideIcons.cpu, color: Colors.white, size: 36),
+                          ),
+                          Positioned(
+                            right: 0, bottom: 0,
+                            child: Container(
+                              width: 14, height: 14,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF10B981), // Смарагдовий
+                                shape: BoxShape.circle,
+                                border: Border.all(color: const Color(0xFF3730A3), width: 2),
+                              ),
+                            ),
+                          )
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      Text("Роман 41-КІ", style: GoogleFonts.orbitron(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: 1)),
+                      const SizedBox(height: 4),
+                      Text("IoT Система Активна", style: TextStyle(color: Colors.indigo.shade200, fontSize: 13, fontWeight: FontWeight.w500)),
+                    ],
+                  ),
+                )
+              ],
+            ),
+          ),
+          
+          // Пункти меню
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+              children: [
+                const SizedBox(height: 10),
+                Text("ГОЛОВНЕ МЕНЮ", style: GoogleFonts.orbitron(fontSize: 11, color: Colors.grey.shade500, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 10),
+                
+                _buildPremiumDrawerItem(
+                  title: "Налаштування лімітів",
+                  icon: LucideIcons.sliders,
+                  color: const Color(0xFFF59E0B), // Бурштиновий
+                  onTap: () { Navigator.pop(context); _showSettings(); }
+                ),
+                const SizedBox(height: 8),
+                _buildPremiumDrawerItem(
+                  title: "Журнал подій",
+                  icon: LucideIcons.clipboardList,
+                  color: const Color(0xFF3B82F6), // Синій
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => const LogScreen()));
+                  }
+                ),
+                const SizedBox(height: 8),
+                _buildPremiumDrawerItem(
+                  title: "Аналітика",
+                  icon: LucideIcons.barChart2,
+                  color: const Color(0xFF8B5CF6), // Фіолетовий
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => AnalyticsScreen()));
+                  }
+                ),
+                
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 20),
+                  child: Divider(color: Colors.black12, height: 1),
+                ),
+                
+                Text("ЕКСПОРТ", style: GoogleFonts.orbitron(fontSize: 11, color: Colors.grey.shade500, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 10),
+                
+                _buildPremiumDrawerItem(
+                  title: "Завантажити CSV",
+                  icon: LucideIcons.downloadCloud,
+                  color: const Color(0xFF10B981), // Смарагдовий
+                  onTap: () {
+                    Navigator.pop(context);
+                    _exportData();
+                  }
+                ),
+              ],
+            ),
+          ),
+          
+          // Підвал (Footer)
+          Container(
+            padding: const EdgeInsets.all(20),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(LucideIcons.radioTower, size: 16, color: Colors.grey.shade400),
+                const SizedBox(width: 8),
+                Text("IoT Monitor Pro v1.0", style: TextStyle(color: Colors.grey.shade500, fontSize: 13, fontWeight: FontWeight.w500)),
+              ],
+            ),
+          )
+        ],
+      ),
+    );
+  }
+
+  // Дизайн преміальної кнопки меню
+  Widget _buildPremiumDrawerItem({required IconData icon, required String title, required Color color, required VoidCallback onTap}) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () {
+          HapticFeedback.selectionClick();
+          onTap();
+        },
+        highlightColor: color.withValues(alpha: 0.05),
+        splashColor: color.withValues(alpha: 0.1),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+          child: Row(
+            children: [
+              // Іконка в білому боксі з кольоровою тінню
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(color: color.withValues(alpha: 0.25), blurRadius: 8, offset: const Offset(0, 4))
+                  ]
+                ),
+                child: Icon(icon, color: color, size: 22),
+              ),
+              const SizedBox(width: 16),
+              // Текст
+              Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15, color: Color(0xFF334155)))),
+              // Стрілочка
+              Icon(LucideIcons.chevronRight, size: 16, color: Colors.grey.shade400),
+            ],
+          ),
         ),
-        ListTile(
-          leading: const Icon(LucideIcons.settings),
-          title: const Text("Налаштувати ліміти"),
-          onTap: () { Navigator.pop(context); _showSettings(); },
-        ),
-        ListTile(
-          leading: const Icon(LucideIcons.history),
-          title: const Text("Журнал даних"),
-          onTap: () {
-            Navigator.pop(context);
-            Navigator.push(context, MaterialPageRoute(builder: (context) => const LogScreen()));
-          },
-        ),
-        ListTile(
-          leading: const Icon(LucideIcons.lineChart),
-          title: const Text("Графіки аналітики"),
-          onTap: () {
-            Navigator.pop(context);
-            Navigator.push(context, MaterialPageRoute(builder: (context) => AnalyticsScreen()));
-          },
-        ),
-        ListTile(
-          leading: const Icon(LucideIcons.downloadCloud, color: Colors.indigo),
-          title: const Text("Експорт звіту (CSV)"),
-          onTap: () {
-            Navigator.pop(context);
-            _exportData();
-          },
-        ),
-      ]),
+      ),
     );
   }
 
@@ -272,70 +450,123 @@ class _DashboardState extends State<Dashboard> {
 
   void _showSettings() {
     showModalBottomSheet(
-      context: context, 
+      context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(25))),
-      builder: (context) => StatefulBuilder(builder: (context, setST) {
-        return Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom + 20, left: 20, right: 20, top: 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min, 
+      backgroundColor: Colors.transparent, // Для заокруглених кутів
+      builder: (context) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+        ),
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+          left: 24, right: 24, top: 12,
+        ),
+        child: StatefulBuilder(builder: (context, setST) {
+          return Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
+              // Смужка-індикатор зверху
+              Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10))),
+              const SizedBox(height: 20),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text("ЛІМІТИ ТРИВОГ", style: GoogleFonts.orbitron(fontSize: 18, fontWeight: FontWeight.bold)),
-                  TextButton.icon(
+                  Text("НАЛАШТУВАННЯ", style: GoogleFonts.orbitron(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.indigo)),
+                  IconButton.filledTonal(
                     onPressed: () {
                       HapticFeedback.mediumImpact();
                       setST(() {
+                        mqtt.settings.update(18, 26, 40, 60);
                         mqtt.settings.tempMin = 18; mqtt.settings.tempMax = 26;
                         mqtt.settings.humMin = 40; mqtt.settings.humMax = 60;
-                        mqtt.settings.update(18, 26, 40, 60);
                       });
                     },
-                    icon: const Icon(LucideIcons.rotateCcw, size: 16),
-                    label: const Text("Скинути"),
+                    icon: const Icon(LucideIcons.rotateCcw, size: 18),
                   )
                 ],
               ),
+              const SizedBox(height: 30),
+              ModernRangeSlider(
+                label: "Температура",
+                unit: "°C",
+                icon: LucideIcons.thermometer,
+                color: Colors.orange,
+                min: mqtt.settings.tempMin,
+                max: mqtt.settings.tempMax,
+                onChanged: (v) => setST(() { 
+                  mqtt.settings.tempMin = v.start; 
+                  mqtt.settings.tempMax = v.end; 
+                }),
+                onEnd: (v) => mqtt.settings.update(v.start, v.end, mqtt.settings.humMin, mqtt.settings.humMax),
+              ),
+              const SizedBox(height: 25),
+              ModernRangeSlider(
+                label: "Вологість",
+                unit: "%",
+                icon: LucideIcons.droplets,
+                color: Colors.blue,
+                min: mqtt.settings.humMin,
+                max: mqtt.settings.humMax,
+                onChanged: (v) => setST(() { 
+                  mqtt.settings.humMin = v.start; 
+                  mqtt.settings.humMax = v.end; 
+                }),
+                onEnd: (v) => mqtt.settings.update(mqtt.settings.tempMin, mqtt.settings.tempMax, v.start, v.end),
+              ),
               const SizedBox(height: 20),
-              _buildRangeSlider(
-                "Температура", "°C", LucideIcons.thermometer, Colors.orange,
-                mqtt.settings.tempMin, mqtt.settings.tempMax, 0, 100,
-                (v) => setST(() { mqtt.settings.tempMin = v.start; mqtt.settings.tempMax = v.end; })
-              ),
-              const Divider(height: 40),
-              _buildRangeSlider(
-                "Вологість", "%", LucideIcons.droplets, Colors.blue,
-                mqtt.settings.humMin, mqtt.settings.humMax, 0, 100,
-                (v) => setST(() { mqtt.settings.humMin = v.start; mqtt.settings.humMax = v.end; })
-              ),
-            ]
-          ),
-        );
-      }),
+            ],
+          );
+        }),
+      ),
     );
   }
+}
 
-  Widget _buildRangeSlider(String label, String unit, IconData icon, Color color, double min, double max, double absMin, double absMax, Function(RangeValues) onCh) {
-    return Column(children: [
-      Row(children: [
-        Icon(icon, color: color, size: 20),
-        const SizedBox(width: 10),
-        Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
-        const Spacer(),
-        Text("${min.round()}-${max.round()} $unit", style: TextStyle(color: color, fontWeight: FontWeight.bold)),
-      ]),
-      RangeSlider(
-        values: RangeValues(min, max),
-        min: absMin, max: absMax,
-        divisions: absMax.toInt(),
-        activeColor: color,
-        inactiveColor: color.withValues(alpha: 0.2),
-        onChanged: (v) { HapticFeedback.selectionClick(); onCh(v); },
-        onChangeEnd: (v) => mqtt.settings.update(mqtt.settings.tempMin, mqtt.settings.tempMax, mqtt.settings.humMin, mqtt.settings.humMax),
-      )
-    ]);
+// Новий віджет для повзунків
+class ModernRangeSlider extends StatelessWidget {
+  final String label, unit;
+  final IconData icon;
+  final Color color;
+  final double min, max;
+  final Function(RangeValues) onChanged, onEnd;
+
+  const ModernRangeSlider({
+    super.key, required this.label, required this.unit, required this.icon,
+    required this.color, required this.min, required this.max, 
+    required this.onChanged, required this.onEnd,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Row(children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
+            child: Icon(icon, color: color, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          const Spacer(),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(20)),
+            child: Text("${min.round()}-${max.round()} $unit", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+          ),
+        ]),
+        const SizedBox(height: 8),
+        RangeSlider(
+          values: RangeValues(min, max),
+          min: 0, max: 100,
+          divisions: 100,
+          activeColor: color,
+          inactiveColor: color.withOpacity(0.1),
+          onChanged: (v) { HapticFeedback.selectionClick(); onChanged(v); },
+          onChangeEnd: onEnd,
+        ),
+      ],
+    );
   }
 }
